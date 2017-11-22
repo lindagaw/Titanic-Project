@@ -14,6 +14,7 @@ df= pd.read_csv('../Preprocessed/preprocessed.csv', header=0, names = FeatureNam
 #Testdf=pd.read_csv('test.csv', names = testFeatureNames)
 i=0
 kfOut = KFold(n_splits=5)
+df = df.sample(frac=1).reset_index(drop=True)
 for train, test in kfOut.split(df['Pclass']):
     #print (i,'\n')
     foldTrain=df.iloc[train]
