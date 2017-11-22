@@ -9,6 +9,7 @@ with open('train.csv', 'rt') as csvfile:
     0-PassengerId, 1-Survived, 2-Pclass, 3-Name, 4-Sex, 5-Age, 6-SibSp, 7-Parch, 8-Ticket, 9-Fare, 10-Cabin, 11-Embarked
     '''
     for item in reader:
+        item[0] = int( item[0] )
         item[1] = float( item[1] )
         if item[5] == '':
             passengers_without_age.append( item )
