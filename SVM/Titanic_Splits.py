@@ -1,6 +1,4 @@
 
-print(__doc__)
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,6 +14,16 @@ df= pd.read_csv('../Preprocessed/preprocessed.csv', header=0, names = FeatureNam
 i=0
 kfOut = KFold(n_splits=5)
 df = df.sample(frac=1).reset_index(drop=True)
+
+df['Fare']=df['Fare'].str[2:-1]
+df['Fare']= pd.to_numeric(df['Fare'], errors='coerce',downcast="float")
+
+
+df['Pclass']=df['Pclass'].str[2:-1]
+
+df['SibSp']=df['SibSp'].str[2:-1]
+
+
 for train, test in kfOut.split(df['Pclass']):
     #print (i,'\n')
     foldTrain=df.iloc[train]
