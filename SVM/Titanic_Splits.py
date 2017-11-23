@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import KFold
+#To make the comparison fair, we divided the input file into five sub-files and used 5 fold cross-validation for the outer loop and used each subfile in each fold, to ensure that every algorithm is compared with the same split.
 
 
 
