@@ -20,8 +20,11 @@ def runRFC_DoubleCrossValid(data_trainSplits,data_testSplits, target_trainSplits
 
     outerScores = []
     outerConfusionMatrices = []
-    forest = None
+    forests = []
     trainSplitIndices = numpy.arange(len(data_trainSplits)) 
+    
+    masterDataMatrix = []
+
     for splitIndex in trainSplitIndices:
         dataTrain, dataTest = data_trainSplits[splitIndex], data_testSplits[splitIndex]
         targetTrain, targetTest = target_trainSplits[splitIndex][0], target_testSplits[splitIndex][0]
@@ -30,27 +33,25 @@ def runRFC_DoubleCrossValid(data_trainSplits,data_testSplits, target_trainSplits
         # We'll eventually get a classifier of maximum average accuracy out of it, which we'll display.
         innerScores_maxAvg = []
         forest = RFC(n_jobs=2,n_estimators= 25)
-                    
+    
         scores = []
         scores = model_selection.cross_val_score(forest, dataTrain, y=targetTrain, cv = numInnerFolds)
         if len(innerScores_maxAvg) == 0 or (numpy.mean(scores) > numpy.mean(innerScores_maxAvg)):
             innerScores_maxAvg = scores
         
-        
-        plt.figure()
-        plt.title("Box Plot of Accuracies, 25 Estimators")
-        plt.xlabel("Random Forest Classifier, 25 estimators, {}th fold".format(splitIndex))
-        plt.ylabel("Prediction Accuracy")
-        plt.boxplot(innerScores_maxAvg)
+        innerScoresForDataMatrix = numpy.transpose(innerScores_maxAvg)
+        masterDataMatrix.append(innerScoresForDataMatrix)
 
         #After number of estimators of maximum accuracy has been found, graph them out.
-        plt.figure()
-        plt.title('Table Results for RFC Accuracy, {}th fold'.format(splitIndex))
-        plt.gca().xaxis.set_visible(False)
-        plt.gca().yaxis.set_visible(False)
-        columns = ["%Acc"]
-        plt.table(cellText = numpy.transpose([innerScores_maxAvg]), colLabels = columns)
-
+#        plt.figure(3)
+#        plt.title('Table Results for RFC Accuracy, {}th fold'.format(splitIndex))
+#        plt.gca().xaxis.set_visible(False)
+#        plt.gca().yaxis.set_visible(False)
+#        columns = ["%Acc"]
+#        plt.table(cellText = numpy.transpose([innerScores_maxAvg]), colLabels = columns)
+#        plt.savefig("Table_{}Fold".format(splitIndex+1))
+        
+        print("{0}|{1}".format(splitIndex+1,innerScores_maxAvg))
        
 
         
@@ -60,7 +61,7 @@ def runRFC_DoubleCrossValid(data_trainSplits,data_testSplits, target_trainSplits
         
         #Now, we predict on the test set, getting the accuracy score, confusion matrix.
         test_predictions = forest.predict(dataTest)
-        test_correctPredictions = (test_predictions == targetTest[0])
+        test_correctPredictions = (test_predictions == targetTest)
         test_numCorrectPreds = test_correctPredictions.sum()
         test_numPredictions = len(test_correctPredictions)
         
@@ -68,17 +69,50 @@ def runRFC_DoubleCrossValid(data_trainSplits,data_testSplits, target_trainSplits
         outerScores.append(test_accuracy)
         outerConfusionMatrix = confusion_matrix(targetTest, test_predictions)
         outerConfusionMatrices.append(outerConfusionMatrix)
+        
+        #Append the random forests to master list
+        forests.append(forest)
+        
+    #Save Accuracies for each Fold
+    
+    plt.figure(1)
+    plt.title("Box Plot of Accuracies, 25 Estimators")
+    plt.xlabel("Random Forest Classifier, ith Fold")
+    plt.ylabel("Prediction Accuracy")
+    plt.boxplot(masterDataMatrix)
+    plt.savefig("RFC_FoldAccuracies")
+
+    
     #Plot the final amalgamate box plot.
-    plt.figure()
+    plt.figure(2)
     plt.title("Final Box Plot of Test Accuracies, RFC")
     plt.xlabel("Random Forest Classifier")
     plt.ylabel("Prediction Accuracy")
     plt.boxplot(outerScores)
+    plt.savefig("RFC_FinalTestAccuracies")
+    
+    print(outerScores)
 
+    i = 0
     for cm in outerConfusionMatrices:
         plt.figure()
-        plot_confusion_matrix(cm, forest.classes_, title="Confusion Matrix of RFC {}".format(len(forest.estimators_)) )
-    
+        plot_confusion_matrix(cm, forest.classes_, title="Confusion Matrix, Fold {}".format(i+1 ))
+        plt.savefig("RFCConfusionMatrix_Fold{}".format(i+1))
+        i = i+1
+        
+    i = 0
+    for forest in forests:
+        importances = forest.feature_importances_
+        indices = numpy.argsort(importances)
+        # Plot the feature importances of the forest
+        plt.figure()
+        plt.title('Feature Importances of Forest, Fold {}'.format(i+1))
+        plt.barh(range(len(indices)), importances[indices], color='b', align='center')
+        plt.yticks(range(len(indices)), wantedFeatures[indices])
+        plt.xlabel('Relative Importance')
+        plt.savefig("RFCFeatureImportances_Fold{}".format(i+1))
+
+        i = i+1
 #This function is cribbed from the SK Learn Documentation, here:
 # http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
 def plot_confusion_matrix(cm, classes,
@@ -154,7 +188,7 @@ dfTestSplits = [dfTest0, dfTest1, dfTest2, dfTest3, dfTest4]
 
 for i in range(len(dfTrainSplits)):
     df = dfTrainSplits[i]
-    df = df.drop(['FName', 'LName', 'Ticket','Cabin'], axis=1)
+    df = df.drop(['FName', 'LName', 'Ticket','Cabin', 'PassengerId'], axis=1)
     df = df.dropna()
     df = df[df.Embarked !=" ''"]
     df = shuffle(df)
@@ -162,7 +196,7 @@ for i in range(len(dfTrainSplits)):
     
 for i in range(len(dfTestSplits)):
     df = dfTestSplits[i]
-    df = df.drop(['FName', 'LName', 'Ticket','Cabin'], axis=1)
+    df = df.drop(['FName', 'LName', 'Ticket','Cabin', 'PassengerId'], axis=1)
     df = df.dropna()
     df = df[df.Embarked !=" ''"]
     df = shuffle(df)
@@ -184,8 +218,8 @@ for i in range(len(dfTestSplits)):
 
 #We don't want the Survived feature in our training set, since that leads to overfitting up the wazoo.
 unwantedFeatures = ['Survived']
-features = dfTrain0.axes[1]
-wantedFeatures = [feature for feature in features if not feature in unwantedFeatures]
+features = dfTrainSplits[0].axes[1]
+wantedFeatures = numpy.array([feature for feature in features if not feature in unwantedFeatures])
 
 y_trainSplits = []
 y_testSplits = []
