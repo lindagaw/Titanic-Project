@@ -16,61 +16,52 @@ import sys
 import pandas
 import itertools
 
-def runRFC_DoubleCrossValid(data, target, numOuterFolds, numInnerFolds):
-    #For <numOuterFolds> outer folds:
-    outerKF = model_selection.KFold(n_splits = numOuterFolds)
-    print("RFC Number of Outer Folds: {}".format(outerKF.get_n_splits(data)))
+def runRFC_DoubleCrossValid(data_trainSplits,data_testSplits, target_trainSplits, target_testSplits, numOuterFolds, numInnerFolds):
 
     outerScores = []
     outerConfusionMatrices = []
+    forests = []
+    trainSplitIndices = numpy.arange(len(data_trainSplits)) 
+    
+    masterDataMatrix = []
 
-    #trainIndices, testIndices = outerKF.split(data)
-    for outerTrainIndex, outerTestIndex in outerKF.split(data):
-        dataTrain, dataTest = data.iloc[outerTrainIndex], data.iloc[outerTestIndex]
-        targetTrain, targetTest = target[0][outerTrainIndex], target[0][outerTestIndex]
+    for splitIndex in trainSplitIndices:
+        dataTrain, dataTest = data_trainSplits[splitIndex], data_testSplits[splitIndex]
+        targetTrain, targetTest = target_trainSplits[splitIndex][0], target_testSplits[splitIndex][0]
 
         #In the inner fold experiment, we'll test different values of num estimators in smaller k-fold validations.
         # We'll eventually get a classifier of maximum average accuracy out of it, which we'll display.
         innerScores_maxAvg = []
-        optimalModel = None
-        optimalNumEstimators = 0
-        for i in range(5,20):
-            forest = RFC(n_jobs=2,n_estimators= i)
-                        
-            scores = []
-            scores = model_selection.cross_val_score(forest, dataTrain, y=targetTrain, cv = numInnerFolds)
-            if len(innerScores_maxAvg) == 0 or (numpy.mean(scores) > numpy.mean(innerScores_maxAvg)):
-                innerScores_maxAvg = scores
-                optimalModel = forest
-                optimalNumEstimators = optimalModel.get_params()['n_estimators']
+        forest = RFC(n_jobs=2,n_estimators= 25)
+    
+        scores = []
+        scores = model_selection.cross_val_score(forest, dataTrain, y=targetTrain, cv = numInnerFolds)
+        if len(innerScores_maxAvg) == 0 or (numpy.mean(scores) > numpy.mean(innerScores_maxAvg)):
+            innerScores_maxAvg = scores
         
-        
-        plt.figure()
-        plt.title("Box Plot of Accuracies, Best N Estimators")
-        plt.xlabel("Random Forest Classifier, {} estimators".format(optimalNumEstimators))
-        plt.ylabel("Prediction Accuracy")
-        plt.boxplot(innerScores_maxAvg)
+        innerScoresForDataMatrix = numpy.transpose(innerScores_maxAvg)
+        masterDataMatrix.append(innerScoresForDataMatrix)
 
         #After number of estimators of maximum accuracy has been found, graph them out.
-        plt.figure()
-        plt.title('Result of Best Inner Fold Experiment, RFC')
-        plt.gca().xaxis.set_visible(False)
-        plt.gca().yaxis.set_visible(False)
-        columns = ["%Acc"]
-        plt.table(cellText = numpy.transpose([innerScores_maxAvg]), colLabels = columns)
-
+#        plt.figure(3)
+#        plt.title('Table Results for RFC Accuracy, {}th fold'.format(splitIndex))
+#        plt.gca().xaxis.set_visible(False)
+#        plt.gca().yaxis.set_visible(False)
+#        columns = ["%Acc"]
+#        plt.table(cellText = numpy.transpose([innerScores_maxAvg]), colLabels = columns)
+#        plt.savefig("Table_{}Fold".format(splitIndex+1))
+        
+        print("{0}|{1}".format(splitIndex+1,innerScores_maxAvg))
        
-        #Check if model's been selected properly.
-        if(optimalModel is None):
-            raise ValueError("Optimal Model not set!\n")
+
         
         #Fit the model to the data, because it apparently ain't doing it itself.
         
-        optimalModel.fit(dataTrain, targetTrain)
+        forest.fit(dataTrain, targetTrain)
         
         #Now, we predict on the test set, getting the accuracy score, confusion matrix.
-        test_predictions = optimalModel.predict(dataTest)
-        test_correctPredictions = (test_predictions == targetTest[0])
+        test_predictions = forest.predict(dataTest)
+        test_correctPredictions = (test_predictions == targetTest)
         test_numCorrectPreds = test_correctPredictions.sum()
         test_numPredictions = len(test_correctPredictions)
         
@@ -78,19 +69,50 @@ def runRFC_DoubleCrossValid(data, target, numOuterFolds, numInnerFolds):
         outerScores.append(test_accuracy)
         outerConfusionMatrix = confusion_matrix(targetTest, test_predictions)
         outerConfusionMatrices.append(outerConfusionMatrix)
+        
+        #Append the random forests to master list
+        forests.append(forest)
+        
+    #Save Accuracies for each Fold
+    
+    plt.figure(1)
+    plt.title("Box Plot of Accuracies, 25 Estimators")
+    plt.xlabel("Random Forest Classifier, ith Fold")
+    plt.ylabel("Prediction Accuracy")
+    plt.boxplot(masterDataMatrix)
+    plt.savefig("RFC_FoldAccuracies")
+
+    
     #Plot the final amalgamate box plot.
-    plt.figure()
+    plt.figure(2)
     plt.title("Final Box Plot of Test Accuracies, RFC")
     plt.xlabel("Random Forest Classifier")
     plt.ylabel("Prediction Accuracy")
     plt.boxplot(outerScores)
-    plt.savefig('BP_RFC_Esth{}_Final.png'.format(len(optimalModel.estimators_)), bbox_inches='tight')
+    plt.savefig("RFC_FinalTestAccuracies")
+    
+    print(outerScores)
 
+    i = 0
     for cm in outerConfusionMatrices:
         plt.figure()
-        plot_confusion_matrix(cm, optimalModel.classes_, title="Confusion Matrix of RFC {}".format(len(optimalModel.estimators_)) )
-    
-    return optimalModel    
+        plot_confusion_matrix(cm, forest.classes_, title="Confusion Matrix, Fold {}".format(i+1 ))
+        plt.savefig("RFCConfusionMatrix_Fold{}".format(i+1))
+        i = i+1
+        
+    i = 0
+    for forest in forests:
+        importances = forest.feature_importances_
+        indices = numpy.argsort(importances)
+        # Plot the feature importances of the forest
+        plt.figure()
+        plt.title('Feature Importances of Forest, Fold {}'.format(i+1))
+        plt.barh(range(len(indices)), importances[indices], color='b', align='center')
+        plt.yticks(range(len(indices)), wantedFeatures[indices])
+        plt.xlabel('Relative Importance')
+        plt.savefig("RFCFeatureImportances_Fold{}".format(i+1))
+
+        i = i+1
 #This function is cribbed from the SK Learn Documentation, here:
 # http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html#sphx-glr-auto-examples-model-selection-plot-confusion-matrix-py
 def plot_confusion_matrix(cm, classes,
@@ -133,76 +155,82 @@ def plot_confusion_matrix(cm, classes,
 #CSV Parsing - Python's got a csv parser already, so we'll just use that.
 
 trainDatasetCSV = sys.argv[1]
-#testDatasetCSV = sys.argv[2] 
+#testDatasetCSV = sys.argv[2]
+trainCSV0 = "../SubFiles/TrainPart0.csv"
+trainCSV1 = "../SubFiles/TrainPart1.csv"
+trainCSV2 = "../SubFiles/TrainPart2.csv"
+trainCSV3 = "../SubFiles/TrainPart3.csv"
+trainCSV4 = "../SubFiles/TrainPart4.csv"
 
-featureNames = ["PassengerId","Survived","Pclass"	,"Name","Sex","Age","SibSp","Parch","Ticket","Fare","Cabin","Embarked"]
+testCSV0 = "../SubFiles/TestPart0.csv"
+testCSV1 = "../SubFiles/TestPart1.csv"
+testCSV2 = "../SubFiles/TestPart2.csv"
+testCSV3 = "../SubFiles/TestPart3.csv"
+testCSV4 = "../SubFiles/TestPart4.csv"
+
+featureNames = ["PassengerId","Survived","Pclass"	,"FName", "LName", "Sex","Age","SibSp","Parch","Ticket","Fare","Cabin","Embarked"]
 #testFeatureNames = ["PassengerId","Pclass"	,"Name","Sex","Age","SibSp","Parch","Ticket","Fare","Cabin","Embarked"]
-df = pandas.read_csv(trainDatasetCSV, header=0, names = featureNames)
+dfTrain0 = pandas.read_csv(trainCSV0, header=0, names = featureNames)
+dfTrain1 = pandas.read_csv(trainCSV1, header=0, names = featureNames)
+dfTrain2 = pandas.read_csv(trainCSV2, header=0, names = featureNames)
+dfTrain3 = pandas.read_csv(trainCSV3, header=0, names = featureNames)
+dfTrain4 = pandas.read_csv(trainCSV4, header=0, names = featureNames)
 
+dfTest0 = pandas.read_csv(testCSV0, header=0, names = featureNames)
+dfTest1 = pandas.read_csv(testCSV1, header=0, names = featureNames)
+dfTest2 = pandas.read_csv(testCSV2, header=0, names = featureNames)
+dfTest3 = pandas.read_csv(testCSV3, header=0, names = featureNames)
+dfTest4 = pandas.read_csv(testCSV4, header=0, names = featureNames)
+
+dfTrainSplits = [dfTrain0, dfTrain1, dfTrain2, dfTrain3, dfTrain4]
+dfTestSplits = [dfTest0, dfTest1, dfTest2, dfTest3, dfTest4]
 #First, we drop a few features: Cabin for sparsity, Ticket for difficulty of parsing, and Name for 
-df = df.drop(['Name','Ticket','Cabin'], axis=1)
-df_complete = df.dropna()
-df_complete = shuffle(df_complete)
 
+for i in range(len(dfTrainSplits)):
+    df = dfTrainSplits[i]
+    df = df.drop(['FName', 'LName', 'Ticket','Cabin', 'PassengerId'], axis=1)
+    df = df.dropna()
+    df = df[df.Embarked !=" ''"]
+    df = shuffle(df)
+    dfTrainSplits[i] = df
+    
+for i in range(len(dfTestSplits)):
+    df = dfTestSplits[i]
+    df = df.drop(['FName', 'LName', 'Ticket','Cabin', 'PassengerId'], axis=1)
+    df = df.dropna()
+    df = df[df.Embarked !=" ''"]
+    df = shuffle(df)
+    dfTestSplits[i] = df
 #Encode
-df_complete = pandas.get_dummies(df_complete, columns=['Sex','Embarked'])
+for i in range(len(dfTrainSplits)):
+    dfTrainSplits[i] = pandas.get_dummies(dfTrainSplits[i], columns=['Sex','Embarked'])
+for i in range(len(dfTestSplits)):
+    dfTestSplits[i] = pandas.get_dummies(dfTestSplits[i], columns=['Sex','Embarked'])
 
-dfTrain = df_complete.head(int(numpy.ceil(3*len(df_complete)/4)))
-dfTest = df_complete.tail(int(numpy.floor(len(df_complete)/4)))
-
+#Convert Parch column to integers.
+char = "'"
+for i in range(len(dfTrainSplits)):
+    dfTrainSplits[i]['Parch'] = dfTrainSplits[i]['Parch'].str.replace(char, '')
+    dfTrainSplits[i]['Parch'] = pandas.to_numeric(dfTrainSplits[i]['Parch'])
+for i in range(len(dfTestSplits)):
+    dfTestSplits[i]['Parch'] = dfTestSplits[i]['Parch'].str.replace(char, '')
+    dfTestSplits[i]['Parch'] = pandas.to_numeric(dfTestSplits[i]['Parch'])
 
 #We don't want the Survived feature in our training set, since that leads to overfitting up the wazoo.
 unwantedFeatures = ['Survived']
-features = df_complete.axes[1]
-wantedFeatures = [feature for feature in features if not feature in unwantedFeatures]
+features = dfTrainSplits[0].axes[1]
+wantedFeatures = numpy.array([feature for feature in features if not feature in unwantedFeatures])
 
-y = pandas.factorize(df_complete['Survived'])
-data = df_complete.drop(['Survived'], axis=1)
+y_trainSplits = []
+y_testSplits = []
 
-optimalRFC = runRFC_DoubleCrossValid(data, y, 5, 5)
+data_trainSplits = []
+data_testSplits = []
+for i in range(len(dfTrainSplits)):
+    y_trainSplits.append(pandas.factorize(dfTrainSplits[i]['Survived']))
+    data_trainSplits.append(dfTrainSplits[i].drop(['Survived'], axis=1))
+for i in range(len(dfTestSplits)):
+    y_testSplits.append(pandas.factorize(dfTestSplits[i]['Survived']))
+    data_testSplits.append(dfTestSplits[i].drop(['Survived'], axis=1))
 
-
-#forests = []
-##First, test out changing the number of estimators.
-#for i in range(50):
-#    forest = RFC(n_jobs=2,n_estimators= (i+1)) #Test an exponential pattern 
-#    
-#    
-#    y, _ = pandas.factorize(dfTrain['Survived'])
-#    
-#    forest.fit(dfTrain[wantedFeatures], y)
-#    
-#    forests.append(forest)
-#
-#
-## ----- Model Testing -------
-#forestPreds = []
-#forestErrors = []
-#
-#unwantedFeatForTest = ['Survived']
-#features = dfTest.axes[1]
-#wantedFeatForTest = [feature for feature in features if not feature in unwantedFeatForTest]
-#for forest in forests:
-#    
-#    preds = forest.predict(dfTest[wantedFeatForTest])
-#    
-#    predictionCorrect = (preds == dfTest['Survived'])
-#    forestPreds.append(preds)
-#    forestErrors.append(predictionCorrect)
-#
-##---Statistics and Plotting ----
-#forestPredictionAccuracies = []
-#
-#for i in range(len(forests)):
-#    numCorrectPreds = (forestErrors[i] == True).sum()
-#    numTotalPreds = len(forestErrors[i])
-#    forestPredictionAccuracy = numCorrectPreds/numTotalPreds
-#    forestPredictionAccuracies.append(forestPredictionAccuracy)
-#
-#forestPredictionAccuracyAvg = numpy.average(forestPredictionAccuracies)
-
-
-
-
-
-
+runRFC_DoubleCrossValid(data_trainSplits, data_testSplits, y_trainSplits, y_testSplits, 5, 5)
