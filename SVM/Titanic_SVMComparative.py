@@ -18,6 +18,7 @@ le = preprocessing.LabelEncoder()
 min_max_scaler = preprocessing.MinMaxScaler()
 
 print(df)
+#PreProcessing
 #df['PassengerId'] = le.fit_transform(df['PassengerId'])
 #df['FName'] = le.fit_transform(df['FName'])
 #df['Pclass'] = le.fit_transform(df['Pclass'])
@@ -100,7 +101,7 @@ BestTraininglAccuracydf=pd.DataFrame()
 foldnumber=0
 
 
-
+#outer loop cross valiadatio
 TestCrossdf=pd.DataFrame()
 for i in range(NumFold1):
     #print (i,'\n')
@@ -128,7 +129,7 @@ for i in range(NumFold1):
     BestAccuracy=0
     BestModel=None
 #
-    
+#inner loop coss validation
     for valTrain, ValTest in kf2.split(foldTrain['Survived'] ):
         print (i," ", j, " ","\n")
         
